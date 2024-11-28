@@ -96,6 +96,22 @@
           </div>
         </div>
       </div>
+      <div class="mt-12" v-if="data.similarBooks?.length">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6">Similar Books You Might Like</h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+          <BookCard
+            v-for="book in data.similarBooks"
+            :key="book.id"
+            :book="book"
+            class="hover:scale-105 transition-transform duration-200"
+          />
+        </div>
+      </div>
+
+      <!-- No Similar Books Message -->
+      <div v-else-if="data.similarBooks?.length === 0" class="mt-12 text-center text-gray-600">
+        No similar books found
+      </div>
     </template>
   </div>
 </template>
@@ -106,3 +122,9 @@ const route = useRoute();
 
 const { data, pending, error } = await useFetch(`/api/books/${route.params.id}`);
 </script>
+
+<style scoped>
+.hover\:scale-105:hover {
+  transform: scale(1.05);
+}
+</style>

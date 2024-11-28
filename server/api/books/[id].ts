@@ -1,3 +1,4 @@
+import { IBook } from "~/types/IBook";
 import { formatBookData } from "../../utils/openLibrary";
 
 export default defineEventHandler(async (event) => {
@@ -27,6 +28,28 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    let similarBooks = [];
+    if (bookData.subjects && bookData.subjects.length > 0) {
+      // Take two random subjects to get a mix of similar books
+      const randomSubjects = bookData.subjects
+        .slice(0, 3)
+        .map((subject: string) => encodeURIComponent(subject))
+        .join(" OR ");
+
+      const similarBooksResponse = await fetch(
+        `https://openlibrary.org/search.json?q=subject:(${randomSubjects})&limit=6&fields=key,title,author_name,cover_i,ratings_average,first_publish_year`,
+      );
+
+      if (similarBooksResponse.ok) {
+        const similarBooksData = await similarBooksResponse.json();
+        // Filter out the current book and format the data
+        similarBooks = similarBooksData.docs
+          .filter((book: any) => book.key !== `/works/${id}`)
+          .map(formatBookData)
+          .slice(0, 5); // Limit to 5 books
+      }
+    }
+
     return {
       id,
       title: bookData.title,
@@ -44,6 +67,7 @@ export default defineEventHandler(async (event) => {
         average: bookData.ratings?.average?.value || 0,
         count: bookData.ratings?.count || 0,
       },
+      similarBooks,
     };
   } catch (error) {
     console.error("Book details error:", error);
