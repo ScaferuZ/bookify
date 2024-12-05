@@ -22,41 +22,78 @@
     <section v-if="!isSearching" class="py-8">
       <h2 class="text-2xl font-bold text-gray-900 mb-6">
         Trending Books
-        <span v-if="featuredPending" class="text-sm font-normal text-gray-500"> Loading... </span>
+        <LoadingSpinner v-if="loading" class="inline ml-2" />
       </h2>
 
-      <div v-if="featuredError" class="text-red-500">Failed to load featured books</div>
+      <!-- Loading State -->
+      <div
+        v-if="loading"
+        class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
+      >
+        <div v-for="n in 8" :key="n" class="animate-pulse">
+          <div class="bg-gray-200 rounded-lg aspect-w-2 aspect-h-3"></div>
+          <div class="mt-2 space-y-2">
+            <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
+        </div>
+      </div>
 
-      <BookList v-else :books="featuredData?.books || []" />
+      <!-- Error State -->
+      <div v-else-if="error" class="text-red-500 text-center py-8">
+        {{ error }}
+        <button @click="loadFeaturedBooks" class="text-blue-600 hover:text-blue-800 ml-2">
+          Try Again
+        </button>
+      </div>
+
+      <!-- Books Grid -->
+      <BookList v-else :books="featuredBooks" />
     </section>
 
     <!-- Search Results Section -->
     <section v-else class="py-8">
       <h2 class="text-2xl font-bold text-gray-900 mb-6">
         Search Results
-        <span v-if="searchPending" class="text-sm font-normal text-gray-500"> Loading... </span>
+        <LoadingSpinner v-if="loading" class="inline ml-2" />
       </h2>
 
-      <div v-if="searchError" class="text-red-500">Failed to search books</div>
-
-      <template v-else>
-        <div v-if="searchData?.books.length === 0" class="text-gray-500">
-          No books found for "{{ searchQuery }}"
+      <!-- Loading State -->
+      <div
+        v-if="loading"
+        class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
+      >
+        <div v-for="n in 8" :key="n" class="animate-pulse">
+          <div class="bg-gray-200 rounded-lg aspect-w-2 aspect-h-3"></div>
+          <div class="mt-2 space-y-2">
+            <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+          </div>
         </div>
+      </div>
 
-        <BookList v-else :books="searchData?.books || []" />
+      <!-- Error State -->
+      <div v-else-if="error" class="text-red-500 text-center py-8">
+        {{ error }}
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="books.length === 0" class="text-gray-500 text-center py-8">
+        No books found for "{{ searchQuery }}"
+      </div>
+
+      <!-- Books Grid -->
+      <template v-else>
+        <BookList :books="books" />
 
         <!-- Load More Button -->
-        <div
-          v-if="searchData && searchData.total > searchData.books.length"
-          class="text-center mt-8"
-        >
+        <div v-if="hasMoreBooks" class="text-center mt-8">
           <button
             @click="loadMore"
-            :disabled="searchPending"
+            :disabled="loading"
             class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {{ searchPending ? "Loading..." : "Load More" }}
+            {{ loading ? "Loading..." : "Load More" }}
           </button>
         </div>
       </template>
@@ -65,32 +102,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, computed, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
+
+const { books, featuredBooks, loading, error, total, currentPage, searchBooks, getFeaturedBooks } =
+  useBook();
 
 const searchQuery = ref("");
-const currentPage = ref(1);
 const isSearching = ref(false);
 
-const {
-  data: featuredData,
-  pending: featuredPending,
-  error: featuredError,
-} = await useFetch("/api/books/featured");
+// Computed
+const hasMoreBooks = computed(() => {
+  return books.value.length < total.value;
+});
 
-const {
-  data: searchData,
-  pending: searchPending,
-  error: searchError,
-  refresh: refreshSearch,
-} = await useFetch(
-  () =>
-    searchQuery.value
-      ? `/api/books/search?q=${encodeURIComponent(searchQuery.value)}&page=${currentPage.value}`
-      : null,
-  {
-    immediate: false,
-  },
-);
+// Load featured books on mount
+const loadFeaturedBooks = async () => {
+  if (featuredBooks.value.length === 0) {
+    await getFeaturedBooks();
+  }
+};
+loadFeaturedBooks();
 
 // Debounced search function
 const debouncedSearch = useDebounceFn(async () => {
@@ -99,33 +131,18 @@ const debouncedSearch = useDebounceFn(async () => {
     return;
   }
 
-  currentPage.value = 1;
   isSearching.value = true;
-  await refreshSearch();
-}, 300); // 300ms delay
+  await searchBooks(searchQuery.value);
+}, 300);
 
 // Watch for search query changes
 watch(searchQuery, () => {
   debouncedSearch();
 });
 
+// Load more results
 const loadMore = async () => {
-  if (searchPending.value) return;
-
-  currentPage.value++;
-  await refreshSearch();
+  if (loading.value) return;
+  await searchBooks(searchQuery.value, currentPage.value + 1);
 };
-
-// Composable for debounce functionality
-function useDebounceFn(fn: Function, delay: number) {
-  let timeout: NodeJS.Timeout;
-
-  return function (...args: any[]) {
-    if (timeout) clearTimeout(timeout);
-
-    timeout = setTimeout(() => {
-      fn.apply(this, args);
-    }, delay);
-  };
-}
 </script>

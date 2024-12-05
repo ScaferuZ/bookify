@@ -1,5 +1,6 @@
-import { IBook } from "~/types/IBook";
-import { formatBookData } from "../../utils/openLibrary";
+import axios from "axios";
+
+const OPEN_LIBRARY_BASE_URL = "https://openlibrary.org";
 
 export default defineEventHandler(async (event) => {
   try {
@@ -12,42 +13,28 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    // Fetch book details
-    const response = await fetch(`https://openlibrary.org/works/${id}.json`);
-    if (!response.ok) throw new Error("Failed to fetch book details");
-    const bookData = await response.json();
+    const [bookResponse, authorResponse] = await Promise.all([
+      axios.get(`${OPEN_LIBRARY_BASE_URL}/works/${id}.json`),
+      axios.get(`${OPEN_LIBRARY_BASE_URL}/authors/${id}.json`).catch(() => null),
+    ]);
 
-    // Fetch author details
-    let authorData = null;
-    if (bookData.authors?.[0]?.author?.key) {
-      const authorResponse = await fetch(
-        `https://openlibrary.org${bookData.authors[0].author.key}.json`,
-      );
-      if (authorResponse.ok) {
-        authorData = await authorResponse.json();
-      }
-    }
+    const bookData = bookResponse.data;
+    const authorData = authorResponse?.data;
 
     let similarBooks = [];
-    if (bookData.subjects && bookData.subjects.length > 0) {
-      // Take two random subjects to get a mix of similar books
+    if (bookData.subjects?.length) {
       const randomSubjects = bookData.subjects
         .slice(0, 3)
         .map((subject: string) => encodeURIComponent(subject))
         .join(" OR ");
 
-      const similarBooksResponse = await fetch(
-        `https://openlibrary.org/search.json?q=subject:(${randomSubjects})&limit=6&fields=key,title,author_name,cover_i,ratings_average,first_publish_year`,
+      const { data: similarData } = await axios.get(
+        `${OPEN_LIBRARY_BASE_URL}/search.json?q=subject:(${randomSubjects})&limit=6`,
       );
-
-      if (similarBooksResponse.ok) {
-        const similarBooksData = await similarBooksResponse.json();
-        // Filter out the current book and format the data
-        similarBooks = similarBooksData.docs
-          .filter((book: any) => book.key !== `/works/${id}`)
-          .map(formatBookData)
-          .slice(0, 5); // Limit to 5 books
-      }
+      similarBooks = similarData.docs
+        .filter((book: any) => book.key !== `/works/${id}`)
+        .map(formatBookData)
+        .slice(0, 5);
     }
 
     return {
@@ -69,11 +56,23 @@ export default defineEventHandler(async (event) => {
       },
       similarBooks,
     };
-  } catch (error) {
-    console.error("Book details error:", error);
+  } catch (error: any) {
     throw createError({
-      statusCode: error.statusCode || 500,
-      statusMessage: error.statusMessage || "Failed to fetch book details",
+      statusCode: error.response?.status || 500,
+      statusMessage: error.message,
     });
   }
+});
+
+// Helper function
+const formatBookData = (book: any) => ({
+  id: book.key.replace("/works/", ""),
+  title: book.title,
+  author: book.author_name?.[0] ?? "Unknown Author",
+  coverImage: book.cover_i
+    ? `https://covers.openlibrary.org/b/id/${book.cover_i}-L.jpg`
+    : "https://placehold.co/400x600",
+  publishedYear: book.first_publish_year ?? 0,
+  averageRating: book.ratings_average ?? 0,
+  ratingsCount: book.ratings_count ?? 0,
 });
