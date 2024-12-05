@@ -14,7 +14,6 @@
           type="text"
           placeholder="Search books, authors, or genres..."
           class="w-full px-6 py-4 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          @keyup.enter="handleSearch"
         />
       </div>
     </section>
@@ -66,6 +65,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from "vue";
+
 const searchQuery = ref("");
 const currentPage = ref(1);
 const isSearching = ref(false);
@@ -91,13 +92,22 @@ const {
   },
 );
 
-const handleSearch = async () => {
-  if (!searchQuery.value.trim()) return;
+// Debounced search function
+const debouncedSearch = useDebounceFn(async () => {
+  if (!searchQuery.value.trim()) {
+    isSearching.value = false;
+    return;
+  }
 
   currentPage.value = 1;
   isSearching.value = true;
   await refreshSearch();
-};
+}, 300); // 300ms delay
+
+// Watch for search query changes
+watch(searchQuery, () => {
+  debouncedSearch();
+});
 
 const loadMore = async () => {
   if (searchPending.value) return;
@@ -106,11 +116,16 @@ const loadMore = async () => {
   await refreshSearch();
 };
 
-// Reset search when query is cleared
-watch(searchQuery, (newValue) => {
-  if (!newValue.trim()) {
-    isSearching.value = false;
-    currentPage.value = 1;
-  }
-});
+// Composable for debounce functionality
+function useDebounceFn(fn: Function, delay: number) {
+  let timeout: NodeJS.Timeout;
+
+  return function (...args: any[]) {
+    if (timeout) clearTimeout(timeout);
+
+    timeout = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+}
 </script>

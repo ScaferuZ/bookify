@@ -26,9 +26,82 @@
           <img :src="data.coverImage" :alt="data.title" class="w-full rounded-lg shadow-lg" />
 
           <!-- Add to Reading List Button -->
-          <button class="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <button
+            @click="showReadingListModal = true"
+            class="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
             Add to Reading List
           </button>
+
+          <!-- Reading List Modal -->
+          <div
+            v-if="showReadingListModal"
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          >
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+              <h3 class="text-xl font-semibold mb-4">Add to Reading List</h3>
+
+              <!-- Create New List Form -->
+              <div v-if="showNewListForm" class="mb-4">
+                <input
+                  v-model="newListName"
+                  type="text"
+                  placeholder="List Name"
+                  class="w-full p-2 border rounded mb-2"
+                />
+                <textarea
+                  v-model="newListDescription"
+                  placeholder="Description (optional)"
+                  class="w-full p-2 border rounded mb-2"
+                ></textarea>
+                <label class="flex items-center mb-4">
+                  <input type="checkbox" v-model="newListIsPublic" class="mr-2" />
+                  Make this list public
+                </label>
+                <div class="flex justify-end gap-2">
+                  <button
+                    @click="showNewListForm = false"
+                    class="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    @click="createNewList"
+                    class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Create & Add Book
+                  </button>
+                </div>
+              </div>
+
+              <!-- Existing Lists -->
+              <div v-else>
+                <div v-if="readingLists.length" class="mb-4">
+                  <div
+                    v-for="list in readingLists"
+                    :key="list.id"
+                    class="p-2 hover:bg-gray-100 rounded cursor-pointer"
+                    @click="addToList(list.id)"
+                  >
+                    <h4 class="font-medium">{{ list.name }}</h4>
+                    <p class="text-sm text-gray-600">{{ list.books.length }} books</p>
+                  </div>
+                </div>
+
+                <div class="flex justify-between mt-4">
+                  <button @click="showNewListForm = true" class="text-blue-600 hover:text-blue-800">
+                    Create New List
+                  </button>
+                  <button
+                    @click="showReadingListModal = false"
+                    class="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- <div></div> -->
@@ -103,6 +176,7 @@
             v-for="book in data.similarBooks"
             :key="book.id"
             :book="book"
+            @click="navigateToBook(book.id)"
             class="hover:scale-105 transition-transform duration-200"
           />
         </div>
@@ -119,8 +193,59 @@
 <script setup lang="ts">
 const router = useRouter();
 const route = useRoute();
+const showReadingListModal = ref(false);
+const showNewListForm = ref(false);
+const newListName = ref("");
+const newListDescription = ref("");
+const newListIsPublic = ref(false);
 
 const { data, pending, error } = await useFetch(`/api/books/${route.params.id}`);
+
+const { readingLists, createList, addBookList, error: readingListError } = useReadingList();
+
+// Create new list and add current book
+const createNewList = () => {
+  if (!newListName.value.trim()) return;
+
+  const list = createList(newListName.value, newListDescription.value, newListIsPublic.value);
+
+  if (list && data.value) {
+    addToList(list.id);
+  }
+
+  // Reset form
+  newListName.value = "";
+  newListDescription.value = "";
+  newListIsPublic.value = false;
+  showNewListForm.value = false;
+  showReadingListModal.value = false;
+};
+
+// Add to existing list
+const addToList = (listId: string) => {
+  if (!data.value) return;
+
+  const success = addBookList(listId, {
+    id: data.value.id,
+    title: data.value.title,
+    author: data.value.author.name,
+    coverImage: data.value.coverImage,
+    description: data.value.description,
+    publishedYear: parseInt(data.value.publishDate) || 0,
+    genre: data.value.subjects,
+    averageRating: data.value.rating.average,
+    language: "en",
+    pageCount: 0,
+  });
+
+  if (success) {
+    showReadingListModal.value = false;
+  }
+};
+
+const navigateToBook = (id: string) => {
+  router.push(`/books/${id}`);
+};
 </script>
 
 <style scoped>
